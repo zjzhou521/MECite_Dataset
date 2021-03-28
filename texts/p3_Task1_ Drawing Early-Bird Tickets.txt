@@ -1,0 +1,1605 @@
+Published as a conference paper at ICLR 2020
+
+DRAW ING EARLY-B IRD T ICKE T S : TOWARD S MOR E E F -
+FIC I EN T TRA IN ING O F D E E P N ETWORK S
+
+Haoran You, Chaojian Li, Pengfei Xu, Yonggan Fu, Yue Wang, Richard G. Baraniuk & Yingyan Linò
+
+Department of Electrical and Computer Engineering
+Rice University
+Houston, TX 77005, USA
+
+{hy34, cl114, px5, yf22, yw68, yingyan.lin, richb}@rice.edu
+
+D4THKyfy
+
+maskdistance
+
+noir rate
+
+lowprecision f b
+
+me
+
+prunestrateg
+
+Xiaohan Chen & Zhangyang Wangò
+
+Department of Computer Science and Engineering
+Texas A&M University
+College Station, TX 77843, USA
+
+{chernxh, atlaswang}@tamu.edu
+
+core
+
+AB STRAC T
+
+(Frankle & Carbin, 2019) shows that there exist winning tickets (small but crit-
+ical subnetworks) for dense, randomly initialized networks, that can be trained
+alone to achieve a comparable accuracy to the latter in a similar number of it-
+erations. However, the identiﬁcation of these winning tickets still requires the
+costly train-prune-retrain process, limiting their practical beneﬁts. In this paper,
+
+we discover for the ﬁrst time that the winning tickets can be identiﬁed at a
+very early training stage, which we term as Early-Bird (EB) tickets, via low-
+
+cost training schemes (e.g., early stopping and low-precision training) at large
+learning rates. Our ﬁnding on the existence of EB tickets is consistent with re-
+cently reported observations that the key connectivity patterns of neural networks
+emerge early. Furthermore, we propose a mask distance metric that can be used
+to identify EB tickets with a low computational overhead, without needing to
+know the true winning tickets that emerge after the full training. Finally, we
+leverage the existence of EB tickets and the proposed mask distance to develop
+efﬁcient training methods, which are achieved by ﬁrst identifying EB tickets via
+low-cost schemes, and then continuing to train merely the EB tickets towards the
+target accuracy. Experiments based on various deep networks and datasets val-
+idate: 1) the existence of EB tickets and the effectiveness of mask distance in
+efﬁciently identifying them; and 2) that the proposed efﬁcient training via EB
+tickets can achieve up to 5.8✓ ⇥ 10.7✓ energy savings while maintaining com-
+parable or even better accuracy as compared to the most competitive state-of-
+the-art training methods, demonstrating a promising and easily adopted method
+for tackling the often cost-prohibitive deep network training. Codes available at
+
+https://github.com/RICE-EIC/Early-Bird-Tickets
+
+1
+
+IN TRODUC T ION
+
+The recent record-breaking predictive performance achieved by deep neural networks (DNNs) mo-
+tivates a tremendously growing demand to bring DNN-powered intelligence into numerous appli-
+cations (Xu et al., 2020). However, the excellent performance of modern DNNs comes at an often
+prohibitive training cost due to the required vast volume of training data and model parameters. As
+an illustrative example of the computational complexity of DNN training, one forward pass of the
+ResNet50 (He et al., 2016a) model requires 4 GFLOPs (FLOPs: ﬂoating point operations) of com-
+putations and training requires 1018 FLOPs, which takes 14 days on one state-of-the-art NVIDIA
+M40 GPU (You et al., 2018). As a result, training a state-of-the-art DNN model often demands
+considerable energy, along with the associated ﬁnancial and environmental costs. For example, a
+recent report shows that training a single DNN can cost over $10K US dollars and emit as much
+carbon as ﬁve cars in their lifetimes (Strubell et al., 2019), limiting the rapid development of DNN
+innovations and raising various environmental concerns.
+The recent trends of improving DNN efﬁciency mostly focus on compressing models and acceler-
+ating inference. An empirically adopted practice is the so-called progressive pruning and training
+
+òCorrespondence should be addressed to: Zhangyang Wang and Yingyan Lin.
+
+1
+
+Kfar
+
+Published as a conference paper at ICLR 2020
+
+routine, i.e., training a large model fully, pruning it, and then retraining the pruned model to restore
+the performance (the process can be iterated several rounds). While this has been a standard prac-
+tice for model compression (Han et al., 2015), some recent efforts start empirically linking it to the
+potential of more efﬁcient training. Notably, the latest series of works (Frankle & Carbin, 2019; Liu
+et al., 2018b) reveals that dense, randomly-initialized networks contain small subnetworks which
+can match the test accuracy of original networks when trained alone themselves. These subnetworks
+are called winning tickets. Despite their insightful ﬁndings, there remains to be a major gap between
+the winning ticket observation and the goal of more efﬁcient training, since winning tickets were
+only identiﬁed by pruning unimportant connections after fully training a dense network.
+This paper closes this gap by demonstrating the Early-Bird (EB) tickets phenomenon: the winning
+
+tickets can be drawn very early in training and with aggressively low-cost training algorithms.
+
+P
+
+Through a range of experiments on different DNNs and datasets, we observe the consistent existence
+of EB tickets and the cheap costs needed to reliably draw them, and develop a novel mask distance
+metric to detect their emergence. After being identiﬁed, re-training those EB tickets (using standard
+training) leads to comparable or even better ﬁnal accuracies, compared to either standard training,
+or re-training the “ground-truth” winning tickets drawn after full training as in (Frankle & Carbin,
+2019). Our observations seem to coincide with the recent ﬁndings by (Achille et al., 2019; Li et al.,
+2019) about the two-stage optimization trajectory in training. Taking advantage of EB tickets, we
+propose an efﬁcient DNN training scheme termed EB Train. To our best knowledge, this is the ﬁrst
+step taken towards exploiting winning tickets for a realistic efﬁcient training goal.
+Our contribution can be summarized as follow:
+
+O
+
+0
+
+againIE
+
+Yeiiiijh
+
+suithmqftmdesf.BZ
+
+EjEYsiassoox
+
+Yggiani
+
+1. We discover the Early-Bird (EB) tickets, and show that they 1) consistently exist across
+DNN models and datasets; 2) can emerge very early in training; and 3) stay robust under
+(and sometimes even favor) various aggressive and low-cost training schemes (in addition
+to early stopping), including large learning rates and low-precision training.
+2. We propose a practical, easy-to-compute mask distance as an indicator to draw EB tickets
+without accessing the “ground-truth” winning tickets (drawn after full training), ﬁxing a
+major paradox for connecting winning tickets with the efﬁcient training goal.
+3. We design a novel efﬁcient training framework based on EB tickets (EB Train). Exper-
+iments in state-of-the-art benchmarks and models show that EB Train can achieve up to
+5.8✓ ⇥ 10.7✓ energy savings, while maintaining the same or even better accuracy, com-
+pared to training with the original winning tickets.
+
+0
+
+2 R ELAT ED WORK S
+
+Tasks
+Winning Ticket Hypothesis. The lottery ticket hypothesis (Frankle & Carbin, 2019) ﬁrst points
+out that a small subnetwork, called the winning ticket, can be identiﬁed by pruning a fully trained
+dense network; when training it in isolation with the same weight initialization once assigned to
+the corresponding weights in the dense network, one can restore the comparable test accuracy to
+the dense network. However, ﬁnding winning tickets hinged on costly (iterative) pruning and re-
+training. (Morcos et al., 2019) studies the reuse of winning tickets, transferable across different
+datasets. (Zhou et al., 2019) discovers the existence of supermasks that can be applied to an un-
+trained, randomly-initialized network. (Liu et al., 2018b) argues that the weight initialization might
+make less difference when trained with a large learning rate, while the searched connectivity is
+more of the winning ticket’s core value. It also explores the usage of both unstructured and (more
+hardware-friendly) structured pruning and shows that both lead to the emergence of winning tickets.
+Another related work (Lee et al., 2019) prunes a network at single-shot with one mini-batch, in which
+the irrelevant connections are identiﬁed by a connection sensitivity criterion. Comparing to (Frankle
+& Carbin, 2019), the authors show their method to be more efﬁcient in ﬁnding the good subnetwork
+(not the winning ticket), although its re-training accuracy/efﬁciency is found to be inferior, compared
+to training the “ground truth” winning ticket.
+
+Other Relevant Observations in Training.
+
+(Rahaman et al., 2019; Xu et al., 2019) argue that
+deep networks will ﬁrst learn low-complexity (lower-frequency) functional components, before ab-
+sorbing high-frequency features: the former being more robust to perturbations. An important hint
+can be found in (Achille et al., 2019): the early stage of training seems to ﬁrst discover the impor-
+tant connections and the connectivity patterns between layers, which becomes relatively ﬁxed in the
+
+Tax
+
+2
+
+Published as a conference paper at ICLR 2020
+
+later training stage. That seems to imply that the critical sub-network (connectivity) can be identi-
+ﬁed independent of, and seemingly also ahead of, the (ﬁnal best) weights. Finally, Li et al. (2019)
+demonstrates that training a deep network with a large initial learning rate helps the model focus on
+memorizing easier-to-ﬁt, more generalizable pattern faster and better – a direct inspiration for us to
+try drawing EB tickets using large learning rates.
+Efﬁcient Inference and Training. Model compression has been extensively studied for lighter-
+weight inference. Popular means include pruning (Li et al., 2017; Liu et al., 2017; He et al., 2018;
+Wen et al., 2016; Luo et al., 2017; Liu et al., 2018a), weight factorization (Denton et al., 2014),
+weight sharing (Wu et al., 2018a), quantization (Hubara et al., 2017), dynamic inference (?Wang
+et al., 2018b; 2019b; Shen et al., 2020), network architecture search (Zoph & Le, 2017), among
+many others (Wang et al., 2018c;d). On the other hand, the literature on efﬁcient training appears
+to be much sparser. A handful of works (Goyal et al., 2017; Cho et al., 2017; You et al., 2018;
+Akiba et al., 2017; Jia et al., 2018; Gupta et al., 2015) focus on reducing the total training time in
+paralleled, communication-efﬁcient distributed settings. In contrast, our goal is to shrink the total
+resource cost for in-situ, resource-constrained training, as (Wang et al., 2019a) advocated. (Banner
+et al., 2018; Wang et al., 2018a) presented low-precision training, which is aligned with our goal
+and can be incorporated into EB Train (see later).
+
+3 DRAW ING EARLY-B IRD T ICKE T S : HY POTH E S I S AND EX PER IM EN T S
+
+DM
+
+We hypothesize that the winning tickets can emerge at a very early training stage, which we term
+
+as an Early-Bird (EB) ticket. Consider a dense, randomly-initialized network f (x; ✓), f reaches a
+minimum validation loss floss at the i-th iteration with a test accuracy facc , when optimized with
+stochastic gradient descent (SGD) on a training set. In addition, consider subnetworks f (x; m j ✓)
+with a mask m " {0, 1} indicates the pruned and unpruned connections in f (x; ✓). When being
+optimized with SGD on the same training set, f (x; m j ✓t ) reach a minimum validation loss f ¨
+with a test accuracy f ¨
+acc , where ✓t denotes the weights at the t-th iteration of training. The EB
+tickets hypothesis articulates that there exists m such that f ¨
+acc ⌅ facc (even '), i.e., same or better
+generalization, with t 8 i (e.g., early stopping) and a sparse m (i.e., much reduced parameters).
+Section 3 addresses three key questions pertaining to the EB ticket hypothesis. We ﬁrst show via
+an extensive set of experiments, that EB tickets can be observed across popular models and datasets
+(Section 3.1). We then try to be more aggressive to see if high-quality EB tickets still emerge under
+“cheaper” training (Section 3.2). We ﬁnally reveal that EB tickets can be identiﬁed using a novel
+mask distance between consecutive epochs, thus no full training needed (Section 3.3).
+
+Q
+
+D
+
+loss
+
+adense
+
+ix o
+
+Ifloss
+
+aEsiEFioss
+
+xi.no
+
+floss this
+
+ta i
+
+msparse
+
+3 .1 DO EARLY-B IRD T ICK ET S A LWAY S EX I ST ?
+
+e
+
+We perform ablation simulations using two representative deep models: VGG16 (Simonyan & Zis-
+serman, 2014) and pre-activation residual networks-101 (PreResNet101) (He et al., 2016b), on two
+popular datasets: CIFAR-10 and CIFAR-100. For drawing the tickets, we adopt a standard training
+protocol (Liu et al., 2018b) for both CIFAR-10 and CIFAR-100: the training takes 160 epochs in
+total and the batch size of 256; the initial learning rate is set to 0.1, and is divided by 10 at the 80th
+and 120th epochs, respectively; the SGD solver is adopted with a momentum of 0.9 and a weight
+decay of 10 4 . For retraining the tickets, we keep the same setting by default.
+We follow the main idea of (Frankle & Carbin, 2019), but instead prune networks trained at much
+earlier points (before the accuracies reach their ﬁnal top values), to see if reliable tickets can still
+be drawn. We adopt the same channel pruning in (Liu et al., 2017) for all experiments since it is
+hardware friendly and aligns with our end goal of efﬁcient training (Wen et al., 2016). Figure 1 re-
+ports the accuracies achieved by re-training the tickets drawn from different early epochs. All results
+consistently endorse that there exist high-quality tickets, at as early as the 20th epoch (w.r.t. a total
+e
+of 160 epochs), that can achieve strong re-training accuracies. Comparing among different pruning
+ratios p, it is not too surprising to see over-pruning (e.g., p = 70%) makes drawing good tickets
+harder, indicating a balance that we need to calibrate between accuracy and training efﬁciency.
+Two more striking observations from Figure 1: 1) there consistently exist EB tickets drawn at certain
+early epoch ranges, that outperform those drawn in a later stages, including the “ground-truth”
+winning tickets drawn at the 160th epoch. That intriguing phenomenon implies the possible “over-
+cooking” when networks try to identify connectivity patterns at later stage (Achille et al., 2019),
+
+Tent
+
+parameters
+
+3
+
+rain
+
+wage
+
+shes
+
+prune
+
+yaccuracy
+
+Published as a conference paper at ICLR 2020
+
+subnetworkcgnffndepo t rnue tgh . is
+
+qbest
+
+0
+
+Haake
+
+Figure 1: Retraining accuracy vs. epoch numbers at which the subnetworks are drawn, for both
+PreResNet101 and VGG16 on the CIFAR-10/100 datasets, where p indicates the channel pruning
+ratio and the dashed line shows the accuracy of the corresponding dense model on the same dataset,
+î denotes the retraining accuracies of subnetworks drawn from the epochs with the best search
+accuracies, and error bars show the minimum and maximum of three runs.
+that might hamper generalization; 2) some EB tickets are able to outperform even their unpruned,
+fully-trained models (e.g., the dashlines), potentially thanks to the sparse regularization learned by
+EB tickets.
+Table 1: The retraining accuracy of subnetworks drawn at different
+training epochs using
+different
+learning rate schedules, with a pruning ratio of 0.5. Here [0, 100] represents
+
+[0LR 0.01 , 100LR 0.001 ] while [80, 120] denotes [80LR 0.01 , 120LR 0.001 ], for compactness.
+
+Lange
+
+snug
+
+LR Schedule
+trainingepo
+
+large
+
+[0, 100]
+[80, 120]
+[0, 100]
+[80, 120]
+large
+
+VGG16
+
+PreResNet101
+
+Retrain acc. (%) (CIFAR-100)
+10
+20
+40
+ﬁnal
+66.70
+67.15
+66.96
+69.72
+
+71.11
+
+71.07
+
+69.14
+
+69.74
+
+Retrain acc. (%) (CIFAR-10)
+10
+20
+40
+ﬁnal
+92.88
+93.03
+92.80
+92.64
+
+93.26
+
+93.34
+
+93.20
+
+92.96
+
+69.68
+
+71.58
+
+69.69
+
+72.67
+
+69.79
+
+72.67
+
+70.96
+
+71.52
+
+92.41
+
+93.60
+
+92.72
+
+93.46
+
+92.42
+
+93.56
+
+93.05
+
+93.42
+
+x
+
+3 .2 DO EARLY-B IRD T ICKE T S S T I L L EM ERGE UNDER LOW ER -CO ST TRA IN ING ?
+
+weights
+
+Appropriate large learning rates are important to the emergence of EB tickets. We ﬁrst
+
+connectivity
+For EB tickets, only the important connections (connectivity) found by them matter, while the
+weights are to be re-trained anyway. One might hence come up with an idea, that more aggres-
+sive and “cheaper” training methods might be applicable to further shrink the cost of ﬁnding EB
+tickets (on top of the aforementioned early stopping of training thanks to the identiﬁcation of EB
+tickets ), as long as the same signiﬁcant connections still emerge. We experimentally investigate
+the impacts of two schemes (which are using appropriate large learning rates and training in lower
+precision): EB tickets are observed to survive well under both of them.
+vary the learning rate schedule in the above experiments. The original schedule is denoted as
+[80LR 0.01 , 120LR 0.001 ], i.e., starting from 0.1, decayed to 0.01 at the 80th epoch, and fur-
+ule [0LR 0.01 , 100LR 0.001 ]: starting from 0.01 (the 0th epoch), and decayed to 0.001 at the
+ther decayed to 0.001 at the 120th epoch.
+In comparison, we test a new learning rate sched-
+100th epoch. After drawing tickets, we re-train them all using the same learning rate schedule
+[80LR 0.01 , 120LR 0.001 ] for sufﬁcient training and a fair comparison. We can see from Table
+learning rates, i.e., [80LR 0.01 , 120LR 0.001 ], whose ﬁnal accuracies are also better. Note that the
+1 that high-quality EB tickets always emerge earlier when searching with the schedule of a larger
+earlier emergence of good EB tickets contributes to lowering the training costs. It was observed that
+larger learning rates are beneﬁcial for training the dense model fully to draw the winning tickets in
+(Frankle & Carbin, 2019; Liu et al., 2018b): here we show this beneﬁt extends to EB tickets too.
+More experiments with larger learning rates can be found in Appendix A.2.
+
+J
+
+Low-precision training does not destroy EB tickets. We next examine the emergence of EB
+
+tickets within a state-of-the-art low-precision training algorithm (Wu et al., 2018b) , where all model
+weights, activations, gradients and errors are quantized to 8 bits throughout training. Note that here
+we only apply low-precision training to the stage of identifying EB tickets, and afterwards the tickets
+are trained in the same full-precision as in Section 3.1. Figure 2 shows the retraining accuracy and
+total number of FLOPs (EB ticket search (8 bits) + retraining (32 bits ﬂoating points)) for VGG16
+and CIFAR-10/100. We can see that EB tickets still emerge when using aggressively low-precision
+for identifying EB tickets: the general trends resemble the full-precision training cases in Figure 1,
+except the emergence of good EB tickets seem to become even earlier up to initial epochs. In this
+
+ret
+
+32bitfloating points
+
+4
+
+y
+
+24886
+
+rain
+
+w
+8 bit
+
+1
+
+pruneretainYaccuracy
+
+Published as a conference paper at ICLR 2020
+
+FLOPS 444886
+
+Flops BAK
+
+Baek
+
+0
+
+Figure 2: Retraining accuracy and total training FLOPs comparison vs. epoch number at which the
+subnetwork is drawn, when using 8 bits precision during the stage of identifying EB tickets based
+on the VGG16 model and CIFAR-10/100 datasets, where p indicates the channel-wise pruning ratio
+and the dashed line shows the accuracy of the corresponding dense model on the same dataset.
+way, it will lead to cost savings in ﬁnding EB tickets, since low-precision updates can aggressively
+save energy compared to their full-precision baseline, as shown in the Table 2.
+
+C
+
+that
+
+thin
+
+asp channel
+
+q
+
+prunemask
+prunemy d
+
+dijEdit pruneLagaan gas4
+
+o
+
+o
+
+3 .3 HOW TO ID EN T I FY EAR LY-B IRD T ICK ET S PRACT ICA L LY ?
+withrespectto
+
+Distance between Ticket Masks. For each time of pruning, we deﬁne a binary mask of the drawn
+ticket (pruned subnetwork) w.r.t. the full dense network. We follow (Liu et al., 2017) to consider
+the scaling factor r in batch normalization (BN) layers as indicators of the corresponding channels’
+signiﬁcance. Given a target pruning ratio p, we then prune the channels with top p-percentage
+smallest r values. Denote the pruned channels as 0 while the kept ones as 1, the original network
+can be mapped into a binary “ticket mask”. For any two sub-networks pruned from the same dense
+model, we calculate their mask distance via the Hamming distance between their two ticket masks.
+Detecting EB Tickets via Mask Distances. We ﬁrst visualize and observe the global behaviors of
+mask distances between consecutive epochs. Figure 3 plots the pairwise mask distance matrices
+different pruning ratios p, where (i, j )-th element in a matrix denotes the mask distance between
+(160 ✓ 160) of the VGG16 and PreResNet101 experiments on CIFAR-100 (from Section 3.1), at
+subnetworks drawn from the i-th and j -th epochs in that corresponding experiment (160 epochs in
+total for all). For the ease of visualization, all elements in a matrix are linearly normalized between 0
+and 1; Therefore, in the resulting matrix, a lower value (close to 0) indicates a smaller mask distance
+and is highlighted with a warmer color (same hereinafter).
+Figure 3 demonstrates fairly consistent behaviors. Taking VGG16 on CIFAR-100 (p = 0.2) for an
+example: 1) at the very beginning, the mask distances change rapidly between epochs, manifested by
+the quickly “cooling” colors (yellow   green), from the diagonal line (lowest since that is comparing
+an epoch’s mask with itself), to off-diagonal (comparing different epochs; the more an element
+deviates from the diagonal, the more distant the two epochs are away from each other); 2) after ⇥10
+epochs, the off-diagonal elements become “yellow” too, and the color transition becomes smoother
+from diagonal to off-diagonal, indicating the masks change mildly only after passing this point; 3)
+
+wit
+
+Figure 3: Visualization of the pairwise mask distance matrix for VGG16 and PreResNet101 on
+CIFAR-100.
+
+5
+
+n.irniiiiiiiXiEC
+
+Published as a conference paper at ICLR 2020
+
+O
+
+after ⇥80 epochs, the mask distances almost remain unchanged across epochs. Similar trends are
+observed in other plots too. It seems to concur the hypothesis in (Achille et al., 2019) that a network
+ﬁrst learns important connectivity patterns and then ﬁxs them and further tune their weights.
+Our observation that the ticket masks quickly become stable and hardly changed in early training
+stages supports drawing EB tickets. We therefore measure the mask distance between the consec-
+utive epochs, and draw EB tickets when such distance is smaller than a threshold ✏. Practically, to
+improve the reliability of EB tickets, we will stop to draw EB tickets when the last ﬁve recorded
+mask distances are all smaller than ✏, to avoid some irregular ﬂuctuation in early training stages. In
+Figure 3, the red lines indicate the identiﬁcation of EB tickets when ✏ is set to 0.1.
+
+4 E FFIC I EN T TRA IN ING V IA EAR LY B IRD T ICKE T S
+
+In this section, we present an efﬁ-
+cient DNN training scheme, termed
+as EB Train, which leverages 1) the
+existence of EB tickets and 2) the
+proposed mask distance that can de-
+tect the emergence of EB tickets
+for time- and energy-efﬁcient train-
+ing. We will ﬁrst provide a con-
+ceptual overview, and then describe
+the routine of EB Train, and ﬁnally
+show the evaluation performance
+of EB Train by benchmarking it
+with state-of-the-art methods of ob-
+taining compressed DNN models
+based on representative datasets and
+DNNs.
+
+winningticket
+
+retrain
+
+p
+
+Of
+
+O
+
+Figure 4: A high-level overview of the commonly adopted
+progressive pruning and training scheme and our EB Train.
+
+4 .1 WHY I S EB TRA IN MORE E FFIC I EN T ?
+
+O O
+
+EB Train vs. Progressive Pruning and Training. Figure 4 illustrates an overview of our proposed
+EB Train and the progressive pruning and training scheme, e.g., as in (Frankle & Carbin, 2019).
+In particular, the progressive pruning and training scheme adopts a three-step routine of 1) training
+a large and dense model, 2) pruning it, and 3) then retraining the pruned model to restore perfor-
+mance, and these three steps can be iterated (Han et al., 2015). The ﬁrst step often dominates (e.g.,
+occupy 75% training FLOPs when using the PreResNet101 model and CIFAR-10 dataset) in terms
+of training energy and time costs as it involves training a large and dense model. The key feature
+of our EB Train scheme is that it replaces the aforementioned steps 1 and 2 with a lower-cost step
+of detecting the EB tickets, i.e., enabling early stopping during the time- and energy-dominant step
+of training the large and dense model, thus promising large savings in both training time and en-
+ergy. For example, assuming the ﬁrst step of the progressive pruning and training scheme requires
+N epochs to sufﬁciently train the model for achieving the target accuracy, the proposed EB Train
+detect the emergence of EB tickets, where NEB 8 N (e.g., NEB /N = 12.5% in the experiments
+needs only NEB epochs to identify the EB tickets by making use of the mask distance that can
+summarized in Figure 1 and NEB /N = 6.25% in the experiment summarized in Table 1).
+Algorithm 1: The Algorithm for Searching EB Tickets
+1: Initialize the weights W , scaling factor r , pruning ratio p, and the FIFO queue Q with length l;
+2: while t (epoch) < tmax do
+Update W and r using SGD training;
+Perform structured pruning based on rt towards the target ratio p;
+Calculate the mask distance between the current and last subnetworks and add to Q.
+Return f (x; mtò j W ) (EB ticket);
+
+if Max(Q) < ✏ then
+end if
+11: end while
+
+t = t + 1
+tò = t
+
+548kg
+
+prune
+
+0
+
+3:
+4:
+5:
+6:
+7:
+8:
+9:
+10:
+
+6
+
+Published as a conference paper at ICLR 2020
+
+Figure 5: The total training FLOPs vs. the epochs at which the subnetworks are drawn from, for both
+the PreResNet101 and VGG16 models on the CIFAR-10 and CIFAR-100 datasets, where p indicates
+the channel-wise pruning ratio for extracting the subnetworks. Note that the EB tickets at all cases
+achieve comparable or higher accuracies and consume less FLOPs than those of the “ground-truth”
+winning tickets (drawn after the full training of 160 epochs).
+
+4 .2 HOW TO IM P LEM EN T EB TRA IN ?
+
+DC
+
+Q
+
+From Figure 1, we can see that the EB Train scheme consists of a training (searching) step to
+identify EB tickets and a retraining step to retrain the EB tickets for achieving the target accuracy.
+Algorithm 1 describes the step of searching for EB tickets. Speciﬁcally, the EB searching process 1)
+ﬁrst initializes the weights W and scaling factors r; 2) iterates the structured pruning process as in
+(Liu et al. (2017)) to calculate the mask distances between the consecutive resulting subnetworks,
+storing them into a ﬁrst-in-ﬁrst-out (FIFO) queue with a length of l = 5; and 3) exits when the
+maximum mask distance in the FIFO is smaller than a speciﬁed threshold ✏ (default 0.1 with the
+normalized distances of [0,1]). The output is the resulting EB ticket denoted as f (x; mtò j W ),
+which will be retrained further to reach the target accuracy. Note that unlike the lottery ticket training
+in (Frankle & Carbin, 2019), EB Train inherits the unpruned weights from the drawn EB ticket
+instead of rewinding to the original initialization, as it has been shown that deeper networks are not
+robust to reinitializion with untrained weights (Frankle et al., 2020).
+
+4 .3 HOW DO E S EB TRA IN P ER FORM COM PAR ED TO S TAT E -O F - THE -ART T ECHN IQU E S ?
+
+Experiment Setting. We consider training the VGG16 and PreResNet101 models on both CIFAR-
+10/100 and ImageNet datasets following the basic setting of (Liu et al., 2018b) (i.e., training 160
+epochs for CIFAR and 90 epochs for ImageNet). We measure the training energy costs from real-
+device operations as the energy cost consists of both computational and data movement costs, the
+latter of which is often dominant but can not captured by the commonly used metrics, such as the
+number of FLOPs (Chen et al., 2017), we evaluate the proposed techniques against the baselines in
+terms of accuracy and real measured energy consumption. Speciﬁcally, all the energy consumption
+of full-precision models are obtained by training the corresponding models in an embedded GPU
+(NVIDIA JETSON TX2). The GPU measurement setup can be found in the Appendix. Note that the
+energy measurement results include the overhead of using the mask distance to detect the emergence
+of EB tickets, which is found negligible as compared to the total training cost. For example, for the
+VGG16 model, the overhead caused by computing mask distances is & 0.029% in memory storage
+size, & 0.026% in FLOPs, and & 0.07% in real-measured energy costs. This is because 1) the mask
+distance evaluation only involves simple hamming distance calculations and 2) each epoch only
+calculates the distance once.
+Results and Analysis. We ﬁrst compare the computational savings with the baselines using a
+progressive pruning and training scheme (Liu et al., 2017) in terms of the total training FLOPs,
+when drawing subnetworks at different epochs. Figure 5 summarizes the results of the PreRes-
+Net101/VGG16 models and CIFAR-10/100 datasets, corresponding to the same set of experiments
+as in Figure 1. We see that EB Train can achieve 2.2 ⇥ 2.4✓ FLOPs reduction over the baselines,
+while leading to comparable or even better accuracy (- 0.81% ⇥ + 2.38% over the baseline).
+Table 2 compares the retraining accuracy and consumed FLOPs/energy of EB Train with four state-
+of-the-art progressive pruning and training techniques: the original lottery ticket (LT) training (Fran-
+kle & Carbin, 2019), network slimming (NS) (Liu et al., 2017), ThiNet (Luo et al., 2017) and SNIP
+(Lee et al., 2019). While all of them involve the process of training a dense network, pruning it,
+and retraining, they apply different pruning criteria, e.g., NS imposes L1 -sparsity on channel-wise
+
+7
+
+Published as a conference paper at ICLR 2020
+
+Table 2: Comparing the accuracy and energy/FLOPs of EB Train (including its variants), NS (Liu
+et al. (2017)), LT (Frankle & Carbin, 2019), SNIP (Lee et al., 2019), and ThiNet (Luo et al. (2017)).
+
+Setting
+
+Methods
+
+Retrain acc.
+
+Energy cost (KJ)/FLOPs (P)
+
+LT (one-shot)
+SNIP
+NS
+ThiNet
+EB Train (re-init)
+EB Train (FF)
+EB Train (LF)
+EB Train (LL)
+
+p=30% p=50% p=70%
+93.70
+93.21
+93.76
+93.31
+93.83
+93.42
+93.39
+93.07
+93.88
+93.29
+
+92.78
+
+93.91
+
+93.48
+93.24
+
+93.90
+
+93.31
+92.85
+
+p=30%
+6322/14.9
+3161/7.40
+5270/13.9
+3579/13.2
+2817/7.75
+2370/6.50
+2265/6.45
+
+p=50%
+6322/14.9
+3161/7.40
+4641/12.7
+2656/10.6
+2382/7.05
+1970/5.70
+1667/5.39
+
+489.4/6.45
+410.9/5.39
+6.5✓/1.1✓ 6.5✓/1.4✓
+
+PreResNet
+-101
+CIFAR-10
+
+VGG16
+CIFAR-10
+
+EB Train Improv.
+
+0.08
+
+0.48
+
+LT (one-shot)
+SNIP
+NS
+ThiNet
+EB Train (re-init)
+EB Train (FF)
+EB Train (LF)
+EB Train (LL)
+
+93.18
+93.20
+93.05
+92.82
+93.11
+
+93.39
+
+93.20
+93.25
+
+93.25
+92.71
+92.96
+91.92
+93.23
+
+93.26
+
+93.19
+93.13
+
+92.76
+92.49
+91.42
+92.39
+92.49
+92.24
+92.12
+-0.29
+
+93.28
+
+92.30
+92.70
+90.40
+92.71
+92.71
+92.91
+92.60
+- 0.57
+69.95
+70.01
+68.46
+67.29
+71.05
+
+72.29
+
+70.72
+69.45
+
+EB Train Improv.
+
+0.19
+
+0.01
+
+LT (one-shot)
+SNIP
+NS
+ThiNet
+EB Train (re-init)
+EB Train (FF)
+EB Train (LF)
+EB Train (LL)
+
+PreResNet
+-101
+CIFAR-100
+
+71.90
+72.34
+72.80
+73.10
+73.23
+
+73.52
+
+73.41
+73.04
+
+71.60
+71.63
+71.52
+70.92
+
+73.36
+
+73.15
+73.02
+71.82
+
+EB Train Improv.
+
+0.42
+
+1.73
+
+2.28
+
+VGG16
+CIFAR-100
+
+LT (one-shot)
+SNIP
+NS
+ThiNet
+EB Train (re-init)
+EB Train (FF)
+EB Train (LF)
+EB Train (LL)
+
+EB Train Improv.
+
+71.55
+71.24
+70.83
+71.65
+71.81
+71.60
+71.34
+- 0.81
+
+72.62
+
+p=10% p=30% p=50%
+71.31
+70.96
+70.83
+70.35
+71.28
+69.74
+69.57
+67.22
+71.48
+69.66
+
+72.17
+
+71.50
+70.53
+
+71.28
+
+70.27
+69.91
+
+0.86
+
+0.32
+
+p=70%
+6322/14.9
+3161/7.40
+4211/11.0
+1901/8.65
+1565/3.77
+1452/3.50
+1338/3.44
+
+281.8/3.44
+6.7✓/2.2✓
+
+746.2/30.3
+373.1/15.1
+553.8/23.8
+380.1/16.6
+200.5/9.45
+184.2/9.85
+170.3/8.51
+
+6095/14.9
+3047/7.40
+3993/10.3
+1893/8.65
+1392/3.53
+1294/3.28
+1171/2.99
+
+247.3/2.99
+7.6✓/2.5✓
+
+p=50%
+741.2/30.3
+370.6/15.1
+567.8/24.0
+381.4/19.0
+246.8/10.6
+221.7/9.85
+208.7/10.1
+
+43.1/10.7
+36.5/8.51
+6.6✓/1.2✓ 8.6✓/1.4✓ 10.2✓/1.8✓
+
+746.2/30.3
+373.1/15.1
+617.1/27.4
+298.0/22.6
+290.4/14.4
+256.4/12.7
+250.1/12.8
+56.1/12.8
+
+6095/14.9
+3047/7.40
+4851/13.7
+3603/13.2
+2413/7.35
+2020/6.40
+2038/6.42
+
+p=10%
+741.2/30.3
+370.6/15.1
+636.5/29.3
+632.2/27.4
+345.3/16.3
+287.7/14.1
+270.5/14.0
+
+746.2/30.3
+373.1/15.1
+590.7/25.7
+383.9/19.0
+237.3/12.0
+213.4/10.8
+199.4/10.7
+
+6095/14.9
+3047/7.40
+4310/12.5
+2642/10.6
+2016/6.25
+1769/5.45
+1614/5.45
+
+p=30%
+741.2/30.3
+370.6/15.1
+592.3/27.1
+568.5/22.6
+300.0/13.7
+262.2/12.2
+262.7/12.8
+64.4/12.8
+
+434.4/6.42
+366.5/5.45
+7.0✓/1.2✓ 7.2✓/1.4✓
+
+54.6/14.0
+44.4/10.1
+6.8✓/1.1✓ 5.8✓/1.2✓ 10.7✓/1.5✓
+
+scaling factors from BN layers, and ThiNet greedily prunes the channel that has the smallest effect
+on the next layer’s activation values. For EB Train, we by default follow (Liu et al., 2017) to in-
+herit the same weights when re-training the searched ticket, adopting ﬂoating points for both the
+search and retrain stages (i.e., EB Train FF). We also notice existing debates (Liu et al., 2018b) on
+the initialization re-use, and thus also compare with a variant by re-training the ticket from a new
+random initialization, termed as EB Train (re-init). The comparisons in Table 2 further show that
+inheriting weights from the EB tickets favor the generalization of retraining as compared to both the
+random initialization and “over-cooked” weights, aligning well with the recent discussion between
+rewinding and ﬁne-tuning (Renda et al., 2020). Furthermore, we apply the proposed EB Train on top
+of the low-precision training method (Yang et al., 2019a) and obtain experiment results of another
+two variants of EB Train: 1) EB Train with low-precision search and full-precision retrain (i.e., EB
+Train LF), and 2) EB Train with both low-precision search and retrain (i.e., EB Train LL).
+Table 2 demonstrates that EB Train consistently outperforms all competitors in terms of saving
+training energy and computational costs, meanwhile improving the ﬁnal accuracy in most cases. We
+use EB Train Improv. to record the performance margin (either accuracy or energy/computation) be-
+tween EB Train and the strongest competitor among the four state-of-the-art baselines. Speciﬁcally,
+EB Train with full-precision ﬂoating point (FP32) search and retrain outperforms those pruning
+
+8
+
+Published as a conference paper at ICLR 2020
+
+Table 3: Comparing the accuracy and total training FLOPs of EB Train, Network Slimming (Liu
+et al., 2017), ThiNet (Luo et al., 2017), and SFP (He et al., 2018). The “Acc.
+Improv.” is the
+accuracy of the pruned model minus that of the unpruned model, so a positive number means the
+pruned model has a higher accuracy.
+
+Models Methods
+
+Unpruned
+
+ResNet18
+ImageNet
+
+NS
+SFP
+
+EB Train
+
+Unpruned
+
+ThiNet
+
+EB Train
+
+ResNet50
+ImageNet
+
+Pruning
+ratio
+-
+10%
+30%
+30%
+10%
+30%
+-
+30%
+50%
+70%
+30%
+50%
+70%
+
+Top-1
+Acc. (%)
+69.57
+69.65
+67.85
+67.10
+
+Top-1 Acc.
+Improv. (%)
+-
++0.08
+-1.72
+-2.47
+
+Top-5
+Acc. (%)
+89.24
+89.20
+88.07
+87.78
+
+Top-5 Acc.
+Improv. (%)
+-
+-0.04
+-1.17
+-1.46
+
+69.84
+
+68.28
+75.99
+72.04
+71.01
+68.42
+
+73.86
+
+73.35
+70.16
+
++0.27
+
+-1.29
+-
+-3.55
+-4.58
+-7.17
+
+-1.73
+
+-2.24
+-5.43
+
+89.39
+
+88.28
+92.98
+90.67
+90.02
+88.30
+
+91.52
+
+91.36
+89.55
+
++0.15
+
+-0.96
+-
+-2.31
+-2.96
+-4.68
+
+-1.46
+
+-1.62
+-3.43
+
+Total Training
+FLOPs (P)
+1259.13
+2424.86
+2168.89
+1991.94
+1177.15
+
+952.46
+
+Total Training
+Energy (MJ)
+98.14
+193.51
+180.92
+158.14
+95.71
+
+84.65
+
+2839.96
+4358.53
+3850.03
+3431.48
+2242.30
+1718.78
+
+890.65
+
+280.72
+456.13
+431.73
+416.44
+232.18
+188.18
+
+121.15
+
+methods by up to 1.2 ⇥ 4.7✓ and 1.1 ⇥ 4.5✓ in terms of the energy consumption and computa-
+tional FLOPs, while always achieving comparable or even better accuracies, across three pruning
+ratios, two DNN models and two datasets. Moreover, EB Train with both low-precision (8 bits
+block ﬂoating point (FP8)) search and retrain outperforms the baselines by up to 5.8 ⇥ 24.6✓
+and 1.1 ⇥ 5.0✓ in terms of energy consumption estimated using real-measured unit energy from
+(Yang et al., 2019b) and computational FLOPs. Note that FP8 and FP32 are counted as the same
+FLOPs count units (Sohoni et al., 2019). In addition, comparing with the re-init variant endorses
+the effectiveness of initialization inheritance in EB Train. As an additional highlight, EB Train nat-
+urally leads to more efﬁcient inference of the pruned DNN models, unifying the boost of efﬁciency
+throughout the full learning lifecycle.
+ResNet18/50 on ImageNet. To study the performance of EB Train in a harder dataset, we conduct
+experiments using ResNet18/50 and ImageNet, and compare its resulting accuracy, total training
+FLOPs and energy cost with those of the method in (He et al., 2016a), NS (Liu et al., 2017), ThiNet
+(Luo et al., 2017) and SFP (He et al., 2018) as summarized in Table 3. We have three observations:
+1) When training ResNet18 on ImageNet, EB Train achieves a better accuracy (+0.27%) over the
+unpruned one while introducing 10% channel sparsity; 2) EB Train outperforms other baselines for
+both ResNet18 and ResNet50 by reducing the total training costs while achieving a comparable or
+better accuracy. Speciﬁcally, EB Train achieves a reduced training FLOPs of 51.5% ⇥ 56.1% and
+48.6% ⇥ 74.0% and a reduced training energy of 46.5% ⇥ 53.2% and 49.1% ⇥ 70.9%, while leading
+to a better top-1 accuracy of +0.19% ⇥ +1.18% and +1.74% ⇥ +2.34% for ResNet18 and ResNet50,
+respectively. For example, when training ResNet50 on ImageNet, EB Train with a pruning ratio
+of 70% achieves better (+1.74%) accuracy over ThiNet while saving 74% total training FLOPs and
+71% training energy; 3) Different from the results on CIFAR-10/100 shown in Table 2, all methods
+performed on ImageNet (a harder dataset) start to yield accuracy reductions (-1.72% ⇥ -3.55%) for
+ResNet18/50 with a pruning ratio of only 30%, compared with the unpruned one. Note that in Table
+3, the unpruned results are based on the ofﬁcial implementation in (He et al., 2016a); The SFP results
+are obtained from their original paper (He et al., 2018), which does not provide results at a pruning
+ratio of 10%; all the ThiNet results under various pruning ratios are obtained from the original paper
+(Luo et al., 2017); and the NS results are obtained by conducting the experiments ourselves.
+
+5 D I SCU S S ION AND CONC LU S ION
+
+D largetrrate
+
+lowprecis ion is bmj
+
+y
+
+We have demonstrated that winning tickets can be drawn at the very early training stage, i.e., EB
+tickets exist, in both the standard training and several lower-cost training schemes. That motivates
+a practical success of applying EB tickets to efﬁcient training, whose results compare favorably
+against state-of-the-arts. Moreover, experiments show that EB Train with low-precision search and
+retraining achieve more efﬁcient training. We believe many promising problems still remain open
+to be addressed. An immediate future work is to test low-precision EB Train algorithms on larger
+models/datasets. We are also curious whether more lower-cost training techniques could be asso-
+ciated with EB Train. Finally, sometimes high pruning ratios (e.g, p ' 0.7) can hurt the quality of
+EB tickets and the retrained networks. We look forward to automating the choice of p for different
+models/datasets, unleashing higher efﬁciency.
+
+Do
+
+O
+
+A
+
+O
+
+9
+
+Published as a conference paper at ICLR 2020
+
+6 ACKNOW LEDG EM EN T
+
+The work is supported by the National Science Foundation (NSF) through the Real-Time Machine
+Learning (RTML) program (Award number: 1937592, 1937588).
+
+R E F ER ENC E S
+
+Alessandro Achille, Matteo Rovere, and Stefano Soatto. Critical learning periods in deep net-
+works.
+In International Conference on Learning Representations, 2019. URL https://
+
+openreview.net/forum?id=BkeStsCcKQ.
+
+Takuya Akiba, Shuji Suzuki, and Keisuke Fukuda. Extremely large minibatch sgd: Training resnet-
+50 on imagenet in 15 minutes. CoRR, abs/1711.04325, 2017.
+
+Ron Banner, Itay Hubara, Elad Hoffer, and Daniel Soudry. Scalable methods for 8-bit training of
+neural networks. In Advances in Neural Information Processing Systems, pp. 5145–5153, 2018.
+
+Y. H. Chen, T. Krishna, J. S. Emer, and V. Sze. Eyeriss: An energy-efﬁcient reconﬁgurable accelera-
+tor for deep convolutional neural networks. IEEE Journal of Solid-State Circuits, 52(1):127–138,
+Jan 2017. ISSN 0018-9200.
+
+Minsik Cho, Ulrich Finkler, Sameer Kumar, David S. Kung, Vaibhav Saxena, and Dheeraj Sreedhar.
+Powerai ddl. CoRR, abs/1708.02188, 2017.
+
+Emily L Denton, Wojciech Zaremba, Joan Bruna, Yann LeCun, and Rob Fergus. Exploiting linear
+structure within convolutional networks for efﬁcient evaluation. In Z. Ghahramani, M. Welling,
+C. Cortes, N. D. Lawrence, and K. Q. Weinberger (eds.), Advances in Neural Information
+Processing Systems 27, pp. 1269–1277. Curran Associates, Inc., 2014.
+
+Jonathan Frankle and Michael Carbin. The lottery ticket hypothesis: Finding sparse, trainable neural
+networks. In International Conference on Learning Representations, 2019.
+
+Jonathan Frankle, David J. Schwab, and Ari S. Morcos. The early phase of neural network
+training.
+In International Conference on Learning Representations, 2020. URL https:
+
+//openreview.net/forum?id=Hkl1iRNFwS.
+
+Priya Goyal, Piotr Doll ´ar, Ross B. Girshick, Pieter Noordhuis, Lukasz Wesolowski, Aapo Kyrola,
+Andrew Tulloch, Yangqing Jia, and Kaiming He. Accurate, large minibatch SGD: training im-
+agenet in 1 hour. CoRR, abs/1706.02677, 2017. URL http://arxiv.org/abs/1706.
+
+02677.
+
+Suyog Gupta, Ankur Agrawal, Kailash Gopalakrishnan, and Pritish Narayanan. Deep learning with
+limited numerical precision. In International Conference on Machine Learning, pp. 1737–1746,
+2015.
+
+Song Han, Huizi Mao, and William J Dally. Deep compression: Compressing deep neural networks
+with pruning, trained quantization and huffman coding. arXiv preprint arXiv:1510.00149, 2015.
+
+Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Deep residual learning for image
+recognition. In Proceedings of the IEEE conference on computer vision and pattern recognition,
+
+pp. 770–778, 2016a. URL https://github.com/facebookarchive/fb.resnet.
+torch.
+
+Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun.
+Identity mappings in deep residual
+networks. In European conference on computer vision, pp. 630–645. Springer, 2016b.
+
+Yang He, Guoliang Kang, Xuanyi Dong, Yanwei Fu, and Yi Yang. Soft ﬁlter pruning for accelerating
+deep convolutional neural networks. In International Joint Conference on Artiﬁcial Intelligence
+(IJCAI), pp. 2234–2240, 2018.
+
+Itay Hubara, Matthieu Courbariaux, Daniel Soudry, Ran El-Yaniv, and Yoshua Bengio. Quan-
+tized neural networks: Training neural networks with low precision weights and activations. The
+Journal of Machine Learning Research, 18(1):6869–6898, 2017.
+
+10
+
+Published as a conference paper at ICLR 2020
+
+Xianyan Jia, Shutao Song, Wei He, Yangzihao Wang, Haidong Rong, Feihu Zhou, Liqiang Xie,
+Zhenyu Guo, Yuanzhou Yang, Liwei Yu, et al. Highly scalable deep learning training system with
+mixed-precision: Training imagenet in four minutes. arXiv preprint arXiv:1807.11205, 2018.
+
+Namhoon Lee, Thalaiyasingam Ajanthan, and Philip HS Torr. Snip: Single-shot network pruning
+based on connection sensitivity. In International Conference on Learning Representations, 2019.
+
+Hao Li, Asim Kadav, Igor Durdanovic, Hanan Samet, and Hans Peter Graf. Pruning ﬁlters for
+efﬁcient convnets. In International Conference on Learning Representations, 2017.
+
+Yuanzhi Li, Colin Wei, and Tengyu Ma. Towards explaining the regularization effect of initial large
+learning rate in training neural networks. arXiv preprint arXiv:1907.04595, 2019.
+
+Sicong Liu, Yingyan Lin, Zimu Zhou, Kaiming Nan, Hui Liu, and Junzhao Du. On-demand
+deep model compression for mobile devices: A usage-driven model selection framework.
+In
+Proceedings of the 16th Annual International Conference on Mobile Systems, Applications, and
+Services, pp. 389–400. ACM, 2018a.
+
+Zhuang Liu, Jianguo Li, Zhiqiang Shen, Gao Huang, Shoumeng Yan, and Changshui Zhang. Learn-
+ing efﬁcient convolutional networks through network slimming.
+In Proceedings of the IEEE
+International Conference on Computer Vision, pp. 2736–2744, 2017.
+
+Zhuang Liu, Mingjie Sun, Tinghui Zhou, Gao Huang, and Trevor Darrell. Rethinking the value of
+network pruning. arXiv preprint arXiv:1810.05270, 2018b.
+
+Jian-Hao Luo, Jianxin Wu, and Weiyao Lin. Thinet: A ﬁlter level pruning method for deep neural
+network compression. In Proceedings of the IEEE international conference on computer vision,
+pp. 5058–5066, 2017.
+
+Ari S. Morcos, Haonan Yu, Michela Paganini, and Yuandong Tian. One ticket to win them all:
+generalizing lottery ticket initializations across datasets and optimizers. 2019.
+
+NVIDIA Inc.
+
+https://www.nvidia.com/en-us/
+autonomous-machines/embedded-systems/jetson-tx2/,
+
+NVIDIA Jetson TX2.
+
+accessed
+
+2019-09-
+
+01.
+
+Nasim Rahaman, Aristide Baratin, Devansh Arpit, Felix Draxler, Min Lin, Fred Hamprecht, Yoshua
+Bengio, and Aaron Courville. On the spectral bias of neural networks. In Proceedings of the 36th
+International Conference on Machine Learning, volume 97 of Proceedings of Machine Learning
+Research, pp. 5301–5310. PMLR, 09–15 Jun 2019.
+
+Alex Renda, Jonathan Frankle, and Michael Carbin. Comparing rewinding and ﬁne-tuning in neural
+network pruning. In International Conference on Learning Representations, 2020. URL https:
+
+//openreview.net/forum?id=S1gSj0NKvB.
+
+Jianghao Shen, Yonggan Fu, Yue Wang, Pengfei Xu, Zhangyang Wang, and Yingyan Lin. Fractional
+Skipping: Towards Finer-Grained Dynamic Inference. In The Thirty-Forth AAAI Conference on
+Artiﬁcial Intelligence, 2020.
+
+Karen Simonyan and Andrew Zisserman. Very deep convolutional networks for large-scale image
+recognition. arXiv preprint arXiv:1409.1556, 2014.
+
+Nimit Sharad Sohoni, Christopher Richard Aberger, Megan Leszczynski, Jian Zhang, and
+Christopher R ´e. Low-memory neural network training: A technical report.
+arXiv preprint
+arXiv:1904.10631, 2019.
+
+Emma Strubell, Ananya Ganesh, and Andrew McCallum. Energy and policy considerations for deep
+learning in NLP. CoRR, abs/1906.02243, 2019. URL http://arxiv.org/abs/1906.
+
+02243.
+
+Naigang Wang, Jungwook Choi, Daniel Brand, Chia-Yu Chen, and Kailash Gopalakrishnan. Train-
+ing deep neural networks with 8-bit ﬂoating point numbers. In Advances in neural information
+processing systems, pp. 7675–7684, 2018a.
+
+11
+
+Published as a conference paper at ICLR 2020
+
+Yue Wang, Tan Nguyen, Yang Zhao, Zhangyang Wang, Yingyan Lin, and Richard Baraniuk. Energ-
+ynet: Energy-efﬁcient dynamic inference. 2018b.
+Yue Wang, Ziyu Jiang, Xiaohan Chen, Pengfei Xu, Yang Zhao, Yingyan Lin, and Zhangyang Wang.
+E2-train: Training state-of-the-art cnns with over 80% energy savings. In Advances in Neural
+Information Processing Systems, pp. 5139–5151, 2019a.
+Yue Wang, Jianghao Shen, Ting-Kuei Hu, Pengfei Xu, Tan Nguyen, Richard Baraniuk, Zhangyang
+Wang, and Yingyan Lin. Dual dynamic inference: Enabling more efﬁcient, adaptive and control-
+lable deep inference. arXiv preprint arXiv:1907.04523, 2019b.
+Yunhe Wang, Chang Xu, XU Chunjing, Chao Xu, and Dacheng Tao. Learning versatile ﬁlters for
+efﬁcient convolutional neural networks. In Advances in Neural Information Processing Systems,
+pp. 1608–1618, 2018c.
+Yunhe Wang, Chang Xu, Chao Xu, and Dacheng Tao. Packing convolutional neural networks in
+the frequency domain. IEEE transactions on pattern analysis and machine intelligence, 41(10):
+2495–2510, 2018d.
+Wei Wen, Chunpeng Wu, Yandan Wang, Yiran Chen, and Hai Li. Learning structured sparsity in
+deep neural networks. In Advances in neural information processing systems, pp. 2074–2082,
+2016.
+Junru Wu, Yue Wang, Zhenyu Wu, Zhangyang Wang, Ashok Veeraraghavan, and Yingyan Lin. Deep
+k-means: Re-training and parameter sharing with harder cluster assignments for compressing
+deep convolutions. arXiv preprint arXiv:1806.09228, 2018a.
+Shuang Wu, Guoqi Li, Feng Chen, and Luping Shi. Training and inference with integers in deep
+neural networks. In International Conference on Learning Representations, 2018b. URL https:
+
+//openreview.net/forum?id=HJGXzmspb.
+
+Pengfei Xu, Xiaofan Zhang, Hao Cong, Yang Zhao, Yongan Zhang, Chaojian Li, Zetong Guan,
+Deming Chen, and Yingyan Lin. AutoDNNchip: An automated dnn chip predictor and builderfor
+both fpgas and asics.
+In 28th ACM/SIGDA International Symposium on Field-Programmable
+Gate Arrays, 2020.
+Zhi-Qin John Xu, Yaoyu Zhang, Tao Luo, Yanyang Xiao, and Zheng Ma. Frequency principle:
+Fourier analysis sheds light on deep neural networks. arXiv preprint arXiv:1901.06523, 2019.
+Guandao Yang, Tianyi Zhang, Polina Kirichenko, Junwen Bai, Andrew Gordon Wilson, and Christo-
+pher De Sa. SWALP : Stochastic weight averaging in low precision training. In Proceedings of the
+36th International Conference on Machine Learning, ICML 2019, 9-15 June 2019, Long Beach,
+California, USA, pp. 7015–7024, 2019a. URL http://proceedings.mlr.press/v97/
+
+yang19d.html.
+
+Yukuan Yang, Shuang Wu, Lei Deng, Tianyi Yan, Yuan Xie, and Guoqi Li. Training high-
+performance and large-scale deep neural networks with full 8-bit integers.
+arXiv preprint
+arXiv:1909.02384, 2019b.
+Yang You, Zhao Zhang, Cho-Jui Hsieh, James Demmel, and Kurt Keutzer. Imagenet training in
+minutes.
+In Proceedings of the 47th International Conference on Parallel Processing, pp. 1.
+ACM, 2018.
+Hattie Zhou, Janice Lan, Rosanne Liu, and Jason Yosinski. Deconstructing lottery tickets: Zeros,
+signs, and the supermask. In Advances in Neural Information Processing Systems, 2019.
+Barret Zoph and Quoc V. Le. Neural architecture search with reinforcement learning.
+In
+International Conference on Learning Representations, 2017. URL https://arxiv.org/
+
+abs/1611.01578.
+
+12
+
+Published as a conference paper at ICLR 2020
+
+A A P P END IX
+
+A .1 M EA SUR EM EN T O F EN ERGY CO ST
+
+Figure 6 shows our GPU measurement setup, in which the GPU board is connected to a laptop
+and a power meter. In particular, the training settings are downloaded from the laptop to the GPU
+board, and the real-measured energy consumption is obtained via the power meter and runtime
+measurement for the whole training process.
+
+Edge GPU
+
+Training Settings
+(DNN, epoch, learning rate, etc.)
+
+SSH
+
+Measurement Result
+(accuracy, runtime)
+
+Figure 6: The energy measurement setup (from left to right) with a MAC Air latptop, an embedded
+GPU (JETSON TX2 (NVIDIA Inc.)), and a power meter.
+
+A .2 A P PRO PR IAT E LARGE L EARN ING RATE FAVOR S TH E EM ERG ENC E O F EB T ICK E T S
+
+[80LR 0.01 , 120LR 0.001 ], i.e., starting from 0.1, decayed to 0.01 at the 80th epoch, and further
+Here we show the effect of larger learning rates setting. The original schedule is denoted as
+decayed to 0.001 at the 120th epoch. In comparison, we test a larger initial learning rate, staring
+from 0.5 and 0.2 for VGG16 and PreResNet101 datasets, respectively. After drawing tickets, we re-
+train them all using the same learning rate schedule with their searching phase for sufﬁcient training
+and a fair comparison. We see from Table 4 that high-quality EB tickets also emerge early when
+searching with the larger initial learning rate, whose ﬁnal accuracies are even better.
+
+Table 4: The retraining accuracy of subnetworks drawn at different training epochs using different
+inital learning rate, where the pruning ratio is 0.5.
+
+Retrain acc.(%) (CIFAR-100)
+10
+20
+40
+ﬁnal
+71.07
+69.14
+69.74
+
+71.11
+
+71.65
+
+71.94
+
+71.58
+
+Retrain acc.(%) (CIFAR-10)
+10
+20
+40
+ﬁnal
+93.26
+93.34
+93.20
+92.96
+
+93.45
+
+93.44
+
+93.29
+
+LR Initial
+
+0.1
+0.5
+0.1
+0.2
+
+VGG16
+
+PreResNet101
+
+70.69
+71.58
+
+72.58
+
+93.49
+93.60
+
+93.40
+
+93.46
+
+93.46
+
+93.56
+
+93.87
+
+93.42
+
+93.69
+
+72.67
+
+72.90
+
+72.67
+
+72.86
+
+71.52
+
+72.71
+
+13
+
