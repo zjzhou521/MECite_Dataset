@@ -1,5 +1,0 @@
-1/5:./pdfs/p0_early phase of network training.pdf
-2/5:./pdfs/p1_Lottery Ticket.pdf
-3/5:./pdfs/p3_Task1_ Drawing Early-Bird Tickets.pdf
-4/5:./pdfs/p2_Critical Learning Period.pdf
-5/5:./pdfs/file_test.pdf
