@@ -1,7 +1,7 @@
-pdfs
-texts
-word_freqs
-Dataset_cora
+pdfs/*
+texts/*
+word_freqs/*
+Dataset_cora/*
 
 # Prerequisites
 *.d
