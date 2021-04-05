@@ -128,7 +128,7 @@ def parse(input_path,output_path):
 # read pdfs
 input_path = "./pdfs"
 output_path = "./texts"
-os.system("rm "+output_path+"/*")
+os.system("rm "+output_path+"/all_in_one.txt")
 pdfs = glob.glob("{}/*.pdf".format(input_path))
 
 # convert to corresponding txts
@@ -139,12 +139,16 @@ i = 0
 for pdf in pdfs:
     i += 1
     print("[*] %d/%d:%s" % (i, total_num, get_file_name(pdf)))
+    pdf_name_before, _ = divide_file_name(get_file_name(pdf))
     try:
-        # write to txt
-        if(is_all_in_one):
+        if(is_all_in_one):  # write to one big txt
             parse_all_in_one(pdf, output_path)
-        else:
-            parse(pdf, output_path)
+        else: # write to separate txts
+            # if txt exists, then skip
+            if (os.path.exists(output_path+"/"+pdf_name_before+".txt")):
+                continue
+            else:
+                parse(pdf, output_path)
     except:
         fail_list.append(pdf)
 if(len(fail_list) != 0):
@@ -162,12 +166,16 @@ i = 0
 for pdf in pdfs:
     i += 1
     print("[*] %d/%d:%s"%(i,total_num,get_file_name(pdf)))
+    pdf_name_before, _ = divide_file_name(get_file_name(pdf))
     try:
-        # write to txt
-        if(is_all_in_one):
+        if(is_all_in_one): # write to one big txt
             parse_all_in_one(pdf, output_path)
-        else:
-            parse(pdf, output_path)
+        else:  # write to separate txts
+            # if txt exists, then skip
+            if (os.path.exists(output_path+"/"+pdf_name_before+".txt")):
+                continue
+            else:
+                parse(pdf, output_path)
     except:
         fail_list.append(pdf)
 
