@@ -162,11 +162,13 @@ def main():
     total_num = len(txts)
     i = 0
     txt_path = ""
-    os.system("rm "+output_path+"/*")
+    os.system("rm "+output_path+"/all_in_one.csv")
     for txt_path in txts:
         i += 1
         file_name = get_file_name(txt_path)
         file_name_before,_ = divide_file_name(file_name)
+        if (os.path.exists(output_path+"/"+file_name_before+".csv")):
+            continue
         print("[*] %d/%d:%s" % (i, total_num, file_name))
         # get word count
         txt = open_file(txt_path)
