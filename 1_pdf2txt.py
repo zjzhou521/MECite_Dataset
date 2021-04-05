@@ -146,6 +146,7 @@ for pdf in pdfs:
         else: # write to separate txts
             # if txt exists, then skip
             if (os.path.exists(output_path+"/"+pdf_name_before+".txt")):
+                print("%s already exsits" % (pdf_name_before+".txt"))
                 continue
             else:
                 parse(pdf, output_path)
@@ -173,6 +174,7 @@ for pdf in pdfs:
         else:  # write to separate txts
             # if txt exists, then skip
             if (os.path.exists(output_path+"/"+pdf_name_before+".txt")):
+                print("%s already exsits" % (pdf_name_before+".txt"))
                 continue
             else:
                 parse(pdf, output_path)

@@ -168,6 +168,7 @@ def main():
         file_name = get_file_name(txt_path)
         file_name_before,_ = divide_file_name(file_name)
         if (os.path.exists(output_path+"/"+file_name_before+".csv")):
+            print("%s already exsits" % (file_name_before+".csv"))
             continue
         print("[*] %d/%d:%s" % (i, total_num, file_name))
         # get word count
